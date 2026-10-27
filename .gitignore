@@ -1,0 +1,39 @@
+# Local-only notes and agent instructions (never commit)
+AGENTS.md
+agents.md
+Agents.md
+AGENTS.local.md
+CLAUDE.md
+claude.md
+Claude.md
+CLAUDE.local.md
+.claude/
+PROJECT_EXPLANATION.md
+project_explanation.md
+Project_Explanation.md
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Streamlit secrets (the app needs none, but never commit them)
+.streamlit/secrets.toml
+
+# Downloaded or generated data
+*.csv
+*.parquet
+*.xlsx
+*.pkl
+*.joblib
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
