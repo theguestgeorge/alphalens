@@ -3,7 +3,15 @@ import pandas as pd
 import pytest
 
 import data
-from data import DataError, clean_prices, download_prices, drop_unfinished_session, normalise_ticker
+from data import (
+    DataError,
+    Listing,
+    clean_prices,
+    download_prices,
+    drop_unfinished_session,
+    normalise_ticker,
+    search_listings,
+)
 
 
 @pytest.mark.parametrize(
@@ -105,3 +113,57 @@ def test_download_prices_reports_empty_results(monkeypatch):
     monkeypatch.setattr(data.yf, "Ticker", _EmptyTicker)
     with pytest.raises(DataError, match="no prices"):
         download_prices("AAPL")
+
+
+def _fake_search(quotes):
+    class _Search:
+        def __init__(self, query, **kwargs):
+            self.quotes = quotes
+
+    return _Search
+
+
+_SEARCH_QUOTES = [
+    {"symbol": "AAPU", "quoteType": "ETF", "longname": "Direxion Daily AAPL Bull 2X Shares", "exchDisp": "NASDAQ"},
+    {"symbol": "SAAPL=F", "quoteType": "FUTURE", "shortname": "Apple Inc Stock Futures", "exchDisp": "CME"},
+    {"symbol": "AAPL", "quoteType": "EQUITY", "longname": "Apple Inc.", "shortname": "Apple", "exchDisp": "NASDAQ"},
+    {"symbol": "AAPL.TO", "quoteType": "EQUITY", "shortname": "APPLE CDR", "exchange": "TOR"},
+]
+
+
+def test_search_listings_keeps_priced_securities_and_puts_exact_symbol_first(monkeypatch):
+    monkeypatch.setattr(data.yf, "Search", _fake_search(_SEARCH_QUOTES))
+
+    listings = search_listings(" aapl ")
+
+    assert listings == [
+        Listing("AAPL", "Apple Inc.", "NASDAQ"),
+        Listing("AAPU", "Direxion Daily AAPL Bull 2X Shares", "NASDAQ"),
+        Listing("AAPL.TO", "APPLE CDR", "TOR"),
+    ]
+    assert listings[0].label() == "AAPL · Apple Inc. (NASDAQ)"
+
+
+def test_search_listings_by_company_name_keeps_yahoo_order(monkeypatch):
+    monkeypatch.setattr(data.yf, "Search", _fake_search(_SEARCH_QUOTES))
+    assert [listing.symbol for listing in search_listings("Apple")] == ["AAPU", "AAPL", "AAPL.TO"]
+
+
+def test_search_listings_rejects_empty_query():
+    with pytest.raises(DataError, match="Enter a company name"):
+        search_listings("   ")
+
+
+def test_search_listings_reports_no_matches(monkeypatch):
+    monkeypatch.setattr(data.yf, "Search", _fake_search([{"symbol": "X=F", "quoteType": "FUTURE"}]))
+    with pytest.raises(DataError, match="No stocks"):
+        search_listings("zzzz")
+
+
+def test_search_listings_reports_provider_failures(monkeypatch):
+    def _failing_search(query, **kwargs):
+        raise ConnectionError("network unreachable")
+
+    monkeypatch.setattr(data.yf, "Search", _failing_search)
+    with pytest.raises(DataError, match="network unreachable"):
+        search_listings("Apple")
