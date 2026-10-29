@@ -6,24 +6,26 @@ AlphaLens downloads daily prices for a stock and trains a small machine learning
 
 ![AlphaLens dashboard](docs/screenshot.png)
 
-*The running app for AAPL with five years of history and logistic regression, captured on 27 October 2026.*
+*The running app for AAPL with five years of history and logistic regression, captured on 29 October 2026.*
 
 ## The question
 
 **Can a simple machine learning model generate a trading strategy that outperforms buying and holding a stock after accounting for transaction costs?**
 
-AlphaLens lets you test this for any ticker on Yahoo Finance. In the run shown above, the answer was no. The strategy returned +48.3% against +77.8% for buy-and-hold over the same 370-day test period. The model's test accuracy (50.0%) was below that of always predicting "up".
+AlphaLens lets you test this for any ticker on Yahoo Finance. In the run shown above, the answer was no. The strategy returned +44.2% against +76.7% for buy-and-hold over the same 370-day test period. The model's test accuracy (49.5%) was below that of always predicting "up".
 
 ## Features
 
-- Daily prices for any Yahoo Finance ticker (default AAPL), with 1, 2, 5 or 10 years of history
+- Search by company name (for example Apple) or ticker symbol (for example AAPL), then pick from the matching stocks, ETFs and indices
+- The company name is shown next to the ticker, for example "Apple Inc. (AAPL)"
+- Daily prices for any Yahoo Finance listing (default AAPL), with 1, 2, 5 or 10 years of history
 - Indicators: daily returns, 10- and 20-day moving averages, 20-day rolling volatility
 - Two models: logistic regression and random forest
 - Chronological train/test split, with accuracy reported only on unseen data and compared with a naive baseline
 - Backtest with configurable starting capital and transaction costs, compared with buy-and-hold
 - Metrics: total and annualised return, maximum drawdown, Sharpe ratio, number of trades, time in market
 - Next-trading-day prediction with a model-estimated probability
-- Clear messages for invalid tickers, failed downloads and short histories
+- Clear messages for searches with no matches, failed downloads and short histories
 
 ## Tech stack
 
@@ -33,7 +35,7 @@ Python · Streamlit · yfinance · pandas · NumPy · scikit-learn · Plotly · 
 
 ```text
 app.py        Streamlit interface; calls the modules below
-data.py       downloads and cleans daily prices (yfinance)
+data.py       searches listings and downloads and cleans daily prices (yfinance)
 features.py   indicators, model features and the next-day target
 model.py      chronological split, training, evaluation and next-day forecast
 backtest.py   strategy simulation, transaction costs and performance metrics
@@ -85,6 +87,7 @@ The tests use synthetic price series and need no internet connection. They check
 - the chronological split, and that test-period outcomes cannot influence training
 - signal timing in the backtest and how transaction costs are charged
 - the performance metrics, on series with known answers
+- filtering and ordering of search results
 - handling of invalid, missing and insufficient data
 
 GitHub Actions runs the suite on Python 3.12 and 3.13 for every push and pull request.

@@ -6,19 +6,26 @@ live in data.py, features.py, model.py and backtest.py.
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from backtest import TRADING_DAYS_PER_YEAR, performance_metrics, run_backtest
-from data import PERIODS, DataError, download_prices, normalise_ticker
+from data import PERIODS, DataError, Listing, download_prices, search_listings
 from features import add_indicators, build_dataset
 from model import MODEL_NAMES, Evaluation, Forecast, InsufficientDataError, evaluate_model, forecast_next_day
 
 PRIMARY_COLOUR = "#2a78d6"  # close price, strategy
 SECONDARY_COLOUR = "#eb6834"  # moving average, buy-and-hold
 SHADE_COLOUR = "#898781"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_listings(query: str) -> list[Listing]:
+    return search_listings(query)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -29,6 +36,16 @@ def load_prices(symbol: str, period: str) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_model_results(dataset: pd.DataFrame, model_name: str) -> tuple[Evaluation, Forecast]:
     return evaluate_model(dataset, model_name), forecast_next_day(dataset, model_name)
+
+
+def stop_with_error(message: str) -> NoReturn:
+    st.error(message)
+    st.write(
+        "Check the company name or ticker in the sidebar and try again. If it is correct, Yahoo Finance may be "
+        "temporarily unavailable or limiting requests, so wait a minute before retrying."
+    )
+    st.button("Try again")
+    st.stop()
 
 
 def date_text(timestamp: pd.Timestamp) -> str:
@@ -81,7 +98,24 @@ def format_metrics(metrics: dict) -> dict[str, str]:
 st.set_page_config(page_title="AlphaLens", layout="centered")
 
 with st.sidebar:
-    ticker = st.text_input("Ticker", value="AAPL", help="A Yahoo Finance symbol, for example AAPL, MSFT or NVDA.")
+    query = st.text_input(
+        "Company or ticker",
+        value="AAPL",
+        help="Search Yahoo Finance by company name (for example Apple) or ticker symbol (for example AAPL), "
+        "then press Enter.",
+    )
+    search_error = None
+    try:
+        listings = load_listings(query.strip())
+    except DataError as exc:
+        listings, search_error = [], str(exc)
+    listing = st.selectbox(
+        "Stock",
+        listings,
+        format_func=Listing.label,
+        disabled=not listings,
+        help="Matching stocks, ETFs and indices. An exact ticker match is listed first.",
+    )
     period_label = st.selectbox("History", list(PERIODS), index=2)
     initial_capital = st.number_input(
         "Initial investment",
@@ -106,18 +140,16 @@ with st.sidebar:
 st.title("AlphaLens")
 st.write("A simple stock market prediction and backtesting tool.")
 
+if listing is None:
+    stop_with_error(search_error)
+
+symbol = listing.symbol
+display_name = f"{listing.name} ({symbol})"
 try:
-    symbol = normalise_ticker(ticker)
-    with st.spinner(f"Downloading daily prices for {symbol}..."):
+    with st.spinner(f"Downloading daily prices for {display_name}..."):
         prices = load_prices(symbol, PERIODS[period_label])
 except DataError as exc:
-    st.error(str(exc))
-    st.write(
-        "Check the ticker in the sidebar and try again. If the symbol is correct, Yahoo Finance may be "
-        "temporarily unavailable or limiting requests, so wait a minute before retrying."
-    )
-    st.button("Try again")
-    st.stop()
+    stop_with_error(str(exc))
 
 dataset = build_dataset(prices)
 evaluation, forecast, model_error = None, None, None
@@ -132,7 +164,7 @@ indicators = add_indicators(prices)
 close = prices["Close"]
 last_date = prices.index[-1]
 
-st.subheader(symbol)
+st.subheader(display_name)
 col1, col2, col3 = st.columns(3)
 col1.metric(
     f"Close on {date_text(last_date)}",

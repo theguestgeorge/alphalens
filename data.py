@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 import pandas as pd
 import yfinance as yf
@@ -10,6 +11,8 @@ import yfinance as yf
 # Sidebar label -> yfinance period string
 PERIODS = {"1 year": "1y", "2 years": "2y", "5 years": "5y", "10 years": "10y"}
 PRICE_COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
+# Yahoo search result types that have ordinary daily prices (no futures, options or currencies)
+SEARCH_TYPES = {"EQUITY", "ETF", "INDEX", "MUTUALFUND"}
 
 # Letters, digits and the separators Yahoo uses, e.g. AAPL, BRK-B, RDSA.AS, ^GSPC
 _TICKER_PATTERN = re.compile(r"^\^?[A-Z0-9][A-Z0-9.\-=]{0,14}$")
@@ -29,6 +32,53 @@ def normalise_ticker(ticker: str) -> str:
     if not _TICKER_PATTERN.match(symbol):
         raise DataError(f"'{ticker}' is not a valid ticker symbol. Enter a symbol such as AAPL, MSFT or NVDA.")
     return symbol
+
+
+@dataclass(frozen=True)
+class Listing:
+    """A security found by search: its Yahoo symbol, company name and exchange."""
+
+    symbol: str
+    name: str
+    exchange: str
+
+    def label(self) -> str:
+        return f"{self.symbol} · {self.name} ({self.exchange})"
+
+
+def search_listings(query: str, max_results: int = 10) -> list[Listing]:
+    """Find listings whose company name or ticker matches the query, exact symbol match first.
+
+    Raises DataError if the query is empty, the search fails or nothing matches.
+    """
+    query = query.strip()
+    if not query:
+        raise DataError("Enter a company name or ticker symbol, for example Apple or AAPL.")
+    try:
+        quotes = yf.Search(
+            query, max_results=max_results, news_count=0, lists_count=0, include_cb=False, recommended=0
+        ).quotes
+    except Exception as exc:
+        detail = str(exc).strip().rstrip(":") or type(exc).__name__
+        raise DataError(f"Could not search Yahoo Finance for '{query}' ({detail}).") from exc
+
+    listings = [
+        Listing(
+            symbol=quote["symbol"],
+            name=quote.get("longname") or quote.get("shortname") or quote["symbol"],
+            exchange=quote.get("exchDisp") or quote.get("exchange") or "unknown exchange",
+        )
+        for quote in quotes
+        if quote.get("quoteType") in SEARCH_TYPES and _TICKER_PATTERN.match(quote["symbol"])
+    ]
+    if not listings:
+        raise DataError(
+            f"No stocks, ETFs or indices on Yahoo Finance match '{query}'. "
+            "Try the company's full name or its ticker symbol."
+        )
+    # Stable sort: a listing whose symbol is exactly what was typed comes first, the rest keep Yahoo's order.
+    listings.sort(key=lambda listing: listing.symbol != query.upper())
+    return listings
 
 
 def download_prices(ticker: str, period: str = "5y") -> pd.DataFrame:
